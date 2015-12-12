@@ -19,6 +19,7 @@ function DGPlayer(root) {
 
     var loading = root.querySelector(".seek .track .loaded"),
       progress = root.querySelector(".seek .track .progress"),
+      seekHandle = root.querySelector(".seek .track .handle"),
       played = root.querySelector(".seek span:first-child"),
       remaining = root.querySelector(".seek span:last-child"),
       maxWidth = loading.parentNode.offsetWidth - 2,
@@ -68,6 +69,8 @@ function DGPlayer(root) {
           remaining.innerHTML = '-' + remainingMinutes + ':' + pad(remainingSeconds);
           position = Math.max(0, Math.min(1, currentTime / trackLength));
           progress.style.width = maxWidth * position + 'px';
+          seekPosition = maxWidth * position - 6;
+          seekHandle.style.left = (seekPosition) + 'px';
         } else {
           remaining.innerHTML = '-0:00';
         }
