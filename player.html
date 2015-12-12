@@ -11,56 +11,101 @@
         margin: 0;
     }
     </style>
+    <script src="player.js"></script>
 </head>
 <body>
-    <div class="player">
-        <div class="avatar">
-            <img src="resources/avatar.jpeg">
-        </div>
-        
-        <p>Amos Wenger's Live Stream</p>
-        <span>Get your own at <a href="http://plugandplay.fm/" target="_blank">plugandplay.fm</a>!</span>
-        
-        <div class="ring">
-            <canvas width="90" height="90" class="hidden"></canvas>
-            <div class="button"></div>
-        </div>
-        <div class="counter">0:00</div>
-        
-        <div class="volume">
-            <img src="resources/volume_low.png">
-            <div class="track">
-                <div class="progress"></div>
-                <div class="handle"></div>
-            </div>
-            <img src="resources/volume_high.png">
-        </div>
+    <div id="unsupported">
+      Update your browser.
     </div>
-    <script src="player.js"></script>
-    <script>
-        DGPlayer.on('play', function() {
-            // Simulate buffering
-            DGPlayer.state = 'buffering';
-            DGPlayer.bufferProgress = 0;
-        
-            setTimeout(function() {
-                if (DGPlayer.state != 'buffering') return;
-            
-                DGPlayer.bufferProgress += 1.5;
-                if (DGPlayer.bufferProgress < 100)
-                    setTimeout(arguments.callee, 20);
-                else 
-                    DGPlayer.state = 'playing'; // start the timer and hide the buffering indicator
-            }, 20);
-        });
-    
-        DGPlayer.on('pause', function() {
-            DGPlayer.state = 'paused';
-        });
-    
-        DGPlayer.on('volume', function(value) {
-            console.log("Volume " + value + "%");
-        });
-    </script>
+
+    <div class="player" id="dgplayer" tabindex="0">
+      <div class="avatar">
+        <img src="resources/fallback_album_art.png">
+      </div>
+
+      <span class="title">Unknown Title</span>
+      <span class="artist">Unknown Artist</span>
+
+      <div class="button"></div>
+
+      <div class="volume">
+        <img src="resources/volume_high.png">
+        <div class="track">
+          <div class="progress"></div>
+          <div class="handle"></div>
+        </div>
+        <img src="resources/volume_low.png">
+      </div>
+
+      <div class="seek">
+        <span>0:00</span>
+        <div class="track">
+          <div class="loaded"></div>
+          <div class="progress"></div>
+          <div class="handle"></div>
+        </div>
+        <span>-0:00</span>
+      </div>
+
+      <div class="file_button"></div>
+      <span class="file_description">Load the currently selected file</span>
+    </div>
+
+
+<script type="text/javascript">
+var _PT_ID = null;
+var unsupported;
+if (!window.Audio || !('mozWriteAudio' in new Audio()) && !window.AudioContext && !window.webkitAudioContext) {
+  unsupported = true;
+}
+// Chrome doesn't support changing the sample rate, and uses whatever the hardware supports.
+// We cheat here.  Instead of resampling on the fly, we're currently just loading two different
+// files based on common hardware sample rates.
+var _sampleRate = (function() {
+  var AudioContext = (window.AudioContext || window.webkitAudioContext);
+  if (!AudioContext)
+    return 44100;
+
+  return new AudioContext().sampleRate;
+}());
+
+(function(DGPlayer){
+  if (unsupported) return;
+
+  DGPlayer.volume = 100;
+
+  var player, onplay;
+  var url = '';
+
+  DGPlayer.on('play', onplay = function(){
+    if (player) {
+      clearTimeout(_PT_ID);
+      player.disconnect();
+    }
+    player = new DGAuroraPlayer(AV.Player.fromURL(url), DGPlayer);
+    DGPlayer.off('play', onplay);
+  });
+
+  DGPlayer.on('file', function(file) {
+    if (file) {
+      if (player) {
+        clearTimeout(_PT_ID);
+        player.disconnect();
+      }
+
+      player = new DGAuroraPlayer(AV.Player.fromFile(file), DGPlayer);
+      player.player.on('end', function onEnd(event) {
+        // Grab the next item to the selected item
+        // just another hack
+        var nextSong = $('.selected').next();
+        nextSong.trigger('click');
+        nextSong.dblclick();
+      });
+
+      DGPlayer.off('play', onplay);
+    }
+  });
+
+}(DGPlayer(document.getElementById('dgplayer'))));
 </body>
 </html>
