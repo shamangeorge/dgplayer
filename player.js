@@ -1,350 +1,374 @@
-DGPlayer = (function() {
-    
-    // Get elements
-    var root = document.querySelector(".player"),
-        events = {},
-        state = 'paused';
-    
-    // Preload images
-    new Image().src = "resources/playbutton_active.png";
-    new Image().src = "resources/pausebutton.png";
-    new Image().src = "resources/pausebutton_active.png";
-    
-    // Prevent text selection in IE
-    root.onselectstart = function() {
-        return false
+function DGPlayer(root) {
+
+  // Get elements
+  var events = {},
+    state = 'paused';
+
+  // Preload images
+  new Image().src = "/static/dgplayer/resources/playbutton_active.png";
+  new Image().src = "/static/dgplayer/resources/pausebutton.png";
+  new Image().src = "/static/dgplayer/resources/pausebutton_active.png";
+  new Image().src = "/static/dgplayer/resources/choosefile_pressed.png";
+
+  // Prevent text selection in IE
+  root.onselectstart = function() {
+    return false
+  }
+
+  var seekBar = (function() {
+
+    var loading = root.querySelector(".seek .track .loaded"),
+      progress = root.querySelector(".seek .track .progress"),
+      seekHandle = root.querySelector(".seek .track .handle"),
+      played = root.querySelector(".seek span:first-child"),
+      remaining = root.querySelector(".seek span:last-child"),
+      maxWidth = loading.parentNode.offsetWidth - 2,
+      loaded = 0, currentTime = 0, trackLength = 0, oldSeconds = 0;
+
+
+    function pad(input) {
+      return ("00" + input).slice(-2);
     }
-    
-    var progressIndicator = (function() {
-        
-        var canvas = root.querySelector("canvas"),
-            ctx = canvas.getContext("2d"),
-            grad = ctx.createLinearGradient(0, 0, 90, 90),
-            bufferProgress = 0, isVisible = false;
-            
-        grad.addColorStop(0, "#A0CFD9");
-        grad.addColorStop(1, "#61A7BA");
-        ctx.lineWidth = 10;
-        ctx.strokeStyle = grad;
-        
-        function render() {
-            ctx.clearRect(0, 0, 90, 90);
-            ctx.beginPath();
-            ctx.arc(45, 45, 39, Math.PI * 1.5, 2 * Math.PI * (bufferProgress / 100) + Math.PI * 1.5, false);
-            ctx.stroke();
-        }
-        
-        return {
-            getValue: function() {
-                return bufferProgress;
-            },
-            
-            setVisible: function(visible) {
-                if (visible && !isVisible)
-                    canvas.classList.remove("hidden");
-                else if (isVisible)
-                    canvas.classList.add("hidden");
-                    
-                isVisible = visible;
-            },
-            
-            setValue: function(progress) {
-                bufferProgress = Math.max(0, Math.min(100, progress));
-                render();
-            }
-        }
-        
-    })();
-    
-    var timer = (function() {
-        
-        var counter = root.querySelector(".counter"),
-            interval = null, startTime = Date.now(), small = false;
-            
-        function pad(input) {
-            return ("00" + input).slice(-2);
-        }
-        
-        function update() {
-            var t = (Date.now() - startTime) / 1000,
-                seconds = Math.floor(t % 60),
-                minutes = Math.floor((t /= 60) % 60),
-                hours = Math.floor((t /= 60) % 24);
-                
-            if (hours > 0) {
-                minutes = pad(minutes);
-                if (!small) {
-                    counter.classList.add("small");
-                    small = true;
-                }
-            }
-            else if (small) {
-                counter.classList.remove("small");
-                small = false;
-            }
 
-            counter.innerHTML = (hours > 0 ? hours + ':' : '') + minutes + ':' + pad(seconds);
-        }
-                
-        return {
-            getStartTime: function() {
-                return startTime;
-            },
-            
-            setStartTime: function(time) {
-                startTime = time;
-            },
-            
-            start: function() {
-                if (interval) return;
-                update();
-                counter.classList.add("visible");
-                interval = setInterval(update, 1000);
-            },
-            
-            stop: function() {
-                if (!interval) return;
-                
-                small = false;
-                counter.classList.remove("visible");
-                setTimeout(function() {
-                    counter.classList.remove("small");
-                }, 350);
-                
-                clearInterval(interval);
-                interval = null;
-            }
-        };
-        
-    })();
-    
-    var playpause = (function() {
-        
-        var button = root.querySelector(".button"),
-            interval = null, playing = false;
-            
-        button.onclick = function() {
-            emit(playing ? "pause" : "play");
-        }
-        
-        function setPlaying(play) {
-            if (playing = play)
-                button.classList.add("pause");
-            else
-                button.classList.remove("pause");
-        }
-        
-        return {
-            setPlaying: setPlaying,
-            getPlaying: function() {
-                return playing;
-            }
-        }
-        
-    })();
-    
-    var slider = (function() {
-        
-        var handle = root.querySelector(".volume .handle"),
-            progress = root.querySelector(".volume .progress"),
-            track = root.querySelector(".volume .track")
-            volumeLeft = root.querySelector(".volume img:first-child"),
-            volumeRight = root.querySelector(".volume img:last-child");
-            
-        var lastX = 0, 
-            down = false, 
-            curX = 250 / 2 - 11,
-            min = -5,
-            max = 250 - 16,
-            value = 50;
-            
-        function update(dontEmit) {
-            if ('webkitTransform' in handle.style)
-                handle.style.webkitTransform = "translate3d(" + curX + "px" + ", 0, 0)";
-            else
-                handle.style.left = curX + "px";
+    return {
+      getTrackLength: function() {
+        return trackLength;
+      },
 
-            progress.style.width = curX + 10 + "px";
-            value = Math.round((curX + 5) / (250 - 11) * 100);
-            
-            if (!dontEmit)
-                emit("volume", value);
-        }
-        update();
-        
-        handle.onmousedown = handle.ontouchstart = function(e) {
-            lastX = e.targetTouches ? e.targetTouches[0].pageX : e.clientX;
-            down = true;
-            e.stopPropagation();
-            handle.classList.add("active");
-            e.preventDefault();
-        }
-        
-        function onMove(e) {
-            var eventX = e.targetTouches ? e.targetTouches[0].pageX : e.clientX;
-            var x = Math.max(min, Math.min(max, curX + eventX - lastX));
-            if (!down || x === curX) return;
+      setTrackLength: function(time) {
+        trackLength = time;
+        this.seekTime = currentTime;
+      },
 
-            curX = x;
-            lastX = eventX;
-            update();
-        }
-        
-        function onUp(e) {
-            if(!down) return;
-            down = false;
-            handle.classList.remove("active");
-        }
-        
-        document.addEventListener("mousemove", onMove, false);
-        document.addEventListener("touchmove", onMove, false);
-        document.addEventListener("mouseup", onUp, false);
-        document.addEventListener("touchend", onUp, false);
-        
-        // Handle clicking on the minimum and maximum volume icons
-        function animate() {
-            handle.classList.add("animatable");
-            progress.classList.add("animatable");
+      getCurrentTime: function() {
+        return currentTime;
+      },
 
-            update();
+      setCurrentTime: function(time) {
+        oldSeconds = Math.floor(currentTime / 1000 % 60);;
+        currentTime = time;
 
-            setTimeout(function() {
-                handle.classList.remove("animatable");
-                progress.classList.remove("animatable");
-            }, 250);
-        }
-        
-        volumeLeft.onclick = function() {
-            curX = min;
-            animate();
-        }
+        if (currentTime >= trackLength && trackLength > 0)
+          emit("pause");
 
-        volumeRight.onclick = function() {
-            curX = max;
-            animate();
-        }
+        var t = currentTime / 1000,
+          seconds = Math.floor(t % 60),
+          minutes = Math.floor((t /= 60) % 60);
 
-        // Handle clicking on the track
-        track.onmousedown = track.ontouchstart = function(e) {
-            var x = e.targetTouches ? e.targetTouches[0].pageX : e.clientX;
-            curX = Math.max(min, Math.min(max, x - track.offsetLeft - 13));
-            handle.onmousedown(e);
-            update();
+        if (seconds === oldSeconds)
+          return;
+
+        played.innerHTML = minutes + ':' + pad(seconds);
+
+        // only show the progress bar and remaining time if we know the duration
+        if (trackLength > 0) {
+          var r = (trackLength - currentTime) / 1000,
+            remainingSeconds = Math.floor(r % 60),
+            remainingMinutes = Math.floor((r /= 60) % 60);
+
+          remaining.innerHTML = '-' + remainingMinutes + ':' + pad(remainingSeconds);
+          position = Math.max(0, Math.min(1, currentTime / trackLength));
+          progress.style.width = maxWidth * position + 'px';
+          seekPosition = maxWidth * position - 6;
+          seekHandle.style.left = (seekPosition) + 'px';
+        } else {
+          remaining.innerHTML = '-0:00';
         }
-        
-        return {
-            getValue: function() {
-                return value;
-            },
-            
-            setValue: function(val) {
-                val = Math.max(0, Math.min(100, val));
-                curX = (val / 100) * (250 - 11) - 5;
-                update(true);
-            }
-        }
-        
-    })();
-    
-    function emit(event) {
-        if (!events[event]) return;
-        
-        var args = Array.prototype.slice.call(arguments, 1),
-            callbacks = events[event];
-            
-        for (var i = 0, len = callbacks.length; i < len; i++) {
-            callbacks[i].apply(null, args);
-        }
-    } 
-    
-    var API = {
-        on: function(event, fn) {
-            events[event] || (events[event] = []);
-            events[event].push(fn);
-        },
-        
-        off: function(event, fn) {
-            var events = events[event],
-                index = events.indexOf(fn);
-                
-            ~index && events.splice(index, 1);
-        }
+      },
+
+      getAmountLoaded: function() {
+        return loaded;
+      },
+
+      setAmountLoaded: function(val) {
+        loaded = Math.max(0, Math.min(100, val));
+        loading.style.width = maxWidth * (loaded / 100) + 'px';
+      }
+    }
+
+  })();
+
+  var playpause = (function() {
+
+    var button = root.querySelector(".button"),
+      interval = null, playing = false;
+
+    button.onclick = function() {
+      emit(playing ? "pause" : "play");
     };
-    
-    if (!Object.defineProperty && Object.prototype.__defineGetter__) {
-        Object.defineProperty = function(obj, prop, config) {
-            config.get && obj.__defineGetter__(prop, config.get);
-            config.set && obj.__defineSetter__(prop, config.set);
-        }
+
+    root.addEventListener('keyup', function(e) {
+      e.which === 32 && emit(playing ? "pause" : "play");
+    });
+
+    function setPlaying(play) {
+      if (playing = play)
+        button.classList.add("pause");
+      else
+        button.classList.remove("pause");
     }
-    
-    Object.defineProperty(API, "bufferProgress", {
-        get: progressIndicator.getValue,
-        set: progressIndicator.setValue
-    });
-    
-    Object.defineProperty(API, "state", {
-        set: function(newstate) {
-            progressIndicator.setVisible(newstate == 'buffering');
-            playpause.setPlaying(newstate == 'playing' || newstate == 'buffering');
-            
-            if (newstate == 'playing')
-                timer.start();
-            else if (state == 'playing')
-                timer.stop();
-                
-            state = newstate;
-        },
-        
-        get: function() { 
-            return state;
-        }
-    });
-    
-    Object.defineProperty(API, "startTime", {
-        get: timer.getStartTime,
-        set: timer.setStartTime
-    });
-    
-    Object.defineProperty(API, "volume", {
-        get: slider.getValue,
-        set: slider.setValue
-    });
-    
-    var img = root.querySelector(".avatar img");
-    Object.defineProperty(API, "coverArt", {
-        get: function() {
-            return img.src;
-        },
-        
-        set: function(src) {
-            img.src = src;
-        }
-    });
-    
-    var title = root.querySelector("p"),
-        artist = root.querySelector("span");
-        
-    Object.defineProperty(API, "songTitle", {
-        get: function() {
-            return title.innerHTML;
-        },
-        
-        set: function(val) {
-            title.innerHTML = val;
-        }
-    });
-    
-    Object.defineProperty(API, "songArtist", {
-        get: function() {
-            return artist.innerHTML;
-        },
-        
-        set: function(val) {
-            artist.innerHTML = val;
-        }
-    });
-    
-    return API;
-    
-})();
+
+    return {
+      setPlaying: setPlaying,
+      getPlaying: function() {
+        return playing;
+      }
+    }
+  })();
+
+  var slider = (function() {
+
+    var handle = root.querySelector(".volume .handle"),
+      progress = root.querySelector(".volume .progress"),
+      track = root.querySelector(".volume .track")
+    volumeLeft = root.querySelector(".volume img:first-child"),
+      volumeRight = root.querySelector(".volume img:last-child");
+
+    var lastY = 0,
+      down = false,
+      height = 65,
+      handleSize = 20,
+      min = -8,
+      max = height - handleSize / 2 - 3,
+      curY = Math.floor(height / 2 - handleSize / 2),
+      value = 50;
+
+    function update(dontEmit) {
+      if ('webkitTransform' in handle.style)
+        handle.style.webkitTransform = "translate3d(0, " + (-max - min + curY) + "px" + ", 0)";
+      else
+        handle.style.bottom = max + min - curY + "px";
+
+      progress.style.height = max - curY + "px";
+      value = Math.round(100 - (curY - min) / (max - min) * 100);
+
+      if (!dontEmit)
+        emit("volume", value);
+    }
+    update();
+
+    handle.onmousedown = handle.ontouchstart = function(e) {
+      lastY = e.targetTouches ? e.targetTouches[0].pageY : e.clientY;
+      down = true;
+      e.stopPropagation();
+      handle.classList.add("active");
+      e.preventDefault();
+    }
+
+    function onMove(e) {
+      var eventY = e.targetTouches ? e.targetTouches[0].pageY : e.clientY;
+      var y = Math.max(min, Math.min(max, curY + eventY - lastY));
+      if (!down || y === curY) return;
+
+      curY = y;
+      lastY = eventY;
+      update();
+    }
+
+    function onUp(e) {
+      if(!down) return;
+      down = false;
+      handle.classList.remove("active");
+    }
+
+    document.addEventListener("mousemove", onMove, false);
+    document.addEventListener("touchmove", onMove, false);
+    document.addEventListener("mouseup", onUp, false);
+    document.addEventListener("touchend", onUp, false);
+
+    // Handle clicking on the minimum and maximum volume icons
+    function animate() {
+      handle.classList.add("animatable");
+      progress.classList.add("animatable");
+
+      update();
+
+      setTimeout(function() {
+        handle.classList.remove("animatable");
+        progress.classList.remove("animatable");
+      }, 250);
+    }
+
+    volumeLeft.onclick = function() {
+      curY = min;
+      animate();
+    }
+
+    volumeRight.onclick = function() {
+      curY = max;
+      animate();
+    }
+
+    // Handle clicking on the track
+    track.onmousedown = track.ontouchstart = function(e) {
+      var y = e.targetTouches ? e.targetTouches[0].pageY : e.clientY;
+
+      // Get the absolute offsetTop of the track
+      var offset = 0, obj = track;
+      while (obj) {
+        offset += obj.offsetTop - obj.scrollTop;
+        obj = obj.offsetParent;
+      }
+
+      curY = Math.max(min, Math.min(max, y - offset - (handleSize + min)));
+      handle.onmousedown(e);
+      update();
+    }
+
+    return {
+      getValue: function() {
+        return value;
+      },
+
+      setValue: function(val) {
+        val = Math.max(0, Math.min(100, val));
+        curY = max - (val / 100) * (max - min);
+        update(true);
+      }
+    }
+  })();
+
+  var filebutton = (function() {
+
+    var button = root.querySelector('.file_button'),
+      input = document.createElement('input');
+
+    input.setAttribute('type', 'file');
+    input.style.opacity = 0;
+    input.style.position = 'absolute';
+    input.style.left = '-1000px';
+
+    input.onchange = function(e) {
+      emit('file', input.files[0]);
+    }
+
+    button.onclick = function() {
+      var oReq = new XMLHttpRequest();
+      var file = $('#download_file_link').attr('href');
+      oReq.open("GET", file, true);
+      oReq.responseType = "blob";
+
+      oReq.onload = function (oEvent) {
+        var blob = oReq.response;
+        emit('file', blob);
+      };
+
+      oReq.send(null);
+      //input.click();
+    }
+
+  })();
+
+  function emit(event) {
+    if (!events[event]) return;
+
+    var args = Array.prototype.slice.call(arguments, 1),
+      callbacks = events[event];
+
+    for (var i = 0, len = callbacks.length; i < len; i++) {
+      callbacks[i].apply(null, args);
+    }
+  }
+
+  var API = {
+    on: function(event, fn) {
+      events[event] || (events[event] = []);
+      events[event].push(fn);
+    },
+
+    off: function(event, fn) {
+      var eventsOf = events[event],
+        index = eventsOf.indexOf(fn);
+
+      ~index && eventsOf.splice(index, 1);
+    }
+  };
+
+  // Object.defineProperty shim for Opera
+  Object.defineProperty || (Object.defineProperty = function(obj, prop, config) {
+    if (config.get && obj.__defineGetter__)
+      obj.__defineGetter__(prop, config.get);
+
+    if (config.set && obj.__defineSetter__)
+      obj.__defineSetter__(prop, config.set);
+  })
+
+  Object.defineProperty(API, "bufferProgress", {
+    get: seekBar.getAmountLoaded,
+    set: seekBar.setAmountLoaded
+  });
+
+  Object.defineProperty(API, "state", {
+    set: function(newstate) {
+      playpause.setPlaying(newstate == 'playing' || newstate == 'buffering');
+      state = newstate;
+    },
+
+    get: function() {
+      return state;
+    }
+  });
+
+  Object.defineProperty(API, "duration", {
+    get: seekBar.getTrackLength,
+    set: seekBar.setTrackLength
+  });
+
+  Object.defineProperty(API, "seekTime", {
+    get: seekBar.getCurrentTime,
+    set: seekBar.setCurrentTime
+  });
+
+  Object.defineProperty(API, "volume", {
+    get: slider.getValue,
+    set: slider.setValue
+  });
+
+  var img = root.querySelector(".avatar img");
+  Object.defineProperty(API, "coverArt", {
+    get: function() {
+      return img.src;
+    },
+
+    set: function(src) {
+      img.src = src;
+    }
+  });
+
+  var title = root.querySelector("span.title"),
+    artist = root.querySelector("span.artist");
+
+  Object.defineProperty(API, "songTitle", {
+    get: function() {
+      return title.innerHTML;
+    },
+
+    set: function(val) {
+      title.innerHTML = val;
+    }
+  });
+
+  Object.defineProperty(API, "songArtist", {
+    get: function() {
+      return artist.innerHTML;
+    },
+
+    set: function(val) {
+      artist.innerHTML = val;
+    }
+  });
+
+  var description = root.querySelector('.file_description');
+  Object.defineProperty(API, "fileDescription", {
+    get: function() {
+      return description.innerHTML;
+    },
+
+    set: function(val) {
+      description.innerHTML = val;
+    }
+  });
+
+  return API;
+
+}
